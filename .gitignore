@@ -1,0 +1,6 @@
+.env
+handbook.pdf
+chroma/
+uploaded_pdf/
+*__pycache__*
+run.py
