@@ -1,14 +1,17 @@
-from fastapi import FastAPI, UploadFile, Form
-from typing import List
+# from fastapi import FastAPI, UploadFile, Form
+# from typing import List
+# from main import AgentRAG
 
-app = FastAPI()
+# app = FastAPI()
+# agent = AgentRAG()
 
-@app.post("/answer-questions/")
-async def answer_questions(pdf: UploadFile, questions: List[str]):
+# @app.post("/get_answer/")
+# async def answer_questions(pdf: UploadFile, questions: List[str]):
     
-    pdf_path = f"/tmp/{pdf.filename}"
-    with open(pdf_path, "wb") as f:
-        f.write(await pdf.read())
+#     pdf_path = os.path.join(agent.pdf_root_path,pdf.filename)
+#     with open(pdf_path, "wb") as f:
+#         f.write(await pdf.read())
     
-    results = process_pdf_and_questions(pdf_path, questions)
-    return results
+#     agent.process_pdf(pdf_path)
+#     results = agent.get_answer(questions)
+#     return results
