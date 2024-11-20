@@ -68,7 +68,7 @@ class PDFQuestionAnsweringChains:
     def init_rag_llm_chain(self):
         system_rag_msg = """You are an intelligent assistant. 
                             Use the provided context to answer the question. 
-                            answer should be relevant, and accurate"""
+                            """
         self.rag_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system",system_rag_msg),
