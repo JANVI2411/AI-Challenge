@@ -1,29 +1,39 @@
 import os
 import time 
-import openai
-from openai import OpenAI
-from langchain_core.output_parsers import StrOutputParser
-from langgraph.prebuilt import create_react_agent
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.tools import Tool
-from pydantic import BaseModel, Field
 from langchain_core.messages import AIMessage, HumanMessage
-from scripts.langgraph_rag import ChatBotModelGraph,ManageHistory
+from scripts.langgraph_rag import AgentGraph
+# from scripts.langgraph_rag ManageHistory,MongoDBHandler
 import json 
+import uuid
+from dotenv import load_dotenv
+import os
 
-class ChatBot:
+load_dotenv()
+
+class AgentRAG:
     def __init__(self):
-        self.chatbot = ChatBotModelGraph()
-        # self.manage_history = ManageHistory()
+        self.agent_rag = AgentGraph()
+        self.session_id = str(uuid.uuid4())
+        self.project_dir = os.path.dirname(os.path.abspath(__file__))
+
+        self.pdf_root_path = os.path.join(self.project_dir,"uploaded_pdf")
+        if not os.path.exists(self.pdf_root_path):
+            os.makedirs(self.pdf_root_path)
+
+        '''
+        self.manage_history = ManageHistory()
+        self.memory = MongoDBHandler()
+        self.chat_history = self.memory.load_session(self.session_id)
+        '''
 
     def askModel(self,user_question):
         question = AIMessage(content=user_question)
         
-        # chat_history = self.user_sessions[user_id].get_chat_history()
-        # chat_history = self.manage_history.manage_chat_history(chat_history)
-        chat_history = []
-        response = self.chatbot.app.invoke({"chat_history":chat_history,"questions": [question]}) 
+        '''
+        self.chat_history = self.manage_history.manage_chat_history(self.chat_history)
+        '''
+        self.chat_history = []
+        response = self.agent_rag.app.invoke({"chat_history":self.chat_history,"questions": [question]}) 
 
         msg = ""
         if not response["generation"]: 
@@ -31,14 +41,16 @@ class ChatBot:
         else:
             msg, status = response["generation"][-1].content, "success"
         
-        # chat_history.append(f"Human: {query}")
-        # chat_history.append(f"Answer: {msg}")
+        '''
+        self.chat_history.append(f"Human: {question}")
+        self.chat_history.append(f"Answer: {msg}")
         
-        # self.self.user_sessions[user_id].update_chat_history(chat_history)
+        self.memory.save_session(self.session_id,self.chat_history)
+        '''
         return msg,status
     
     def process_pdf(self,pdf_path):
-        self.chatbot.process_pdf(pdf_path)
+        self.agent_rag.process_pdf(pdf_path)
 
     def get_answer(self,question_list):
         ans_dict = {} 
@@ -48,17 +60,17 @@ class ChatBot:
         return ans_dict 
 
 if __name__ == "__main__":
-    chatbot = ChatBot()
+    agent_rag = AgentRAG()
 
-    pdf_path=""
-    chatbot.process_pdf(pdf_path)
+    pdf_path="uploaded_pdf/handbook.pdf"
+    agent_rag.process_pdf(pdf_path)
 
     questions = ["What is the name of the company?",
                 "Who is the CEO of the company?",
                 "What is their vacation policy?",
                 "What is the termination policy?",
                 "Who is the president of USA?"]
-    ans_dict = chatbot.get_answer(questions)
+    ans_dict = agent_rag.get_answer(questions)
     print(ans_dict)
     """
     Generated Answer:

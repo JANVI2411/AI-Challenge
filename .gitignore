@@ -4,3 +4,4 @@ chroma/
 uploaded_pdf/
 *__pycache__*
 run.py
+backend.log

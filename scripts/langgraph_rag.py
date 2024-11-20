@@ -5,10 +5,6 @@ from typing import Literal
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
-from langchain import hub
-
-from langchain.tools.retriever import create_retriever_tool
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
@@ -22,33 +18,15 @@ from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import AnyMessage, add_messages
 from pymongo import MongoClient
 
+from .config import Config
+from .document import DocumentProcessor
+from .vectorstore import VectorStore
+
+
 logger = logging.getLogger("rag_logs")
 logger.setLevel(logging.INFO)
 handler = logging.FileHandler("backend.log")  # Log to a file
 handler.setLevel(logging.INFO)
-
-from dotenv import load_dotenv
-import os
-
-# Load environment variables from the .env file
-load_dotenv()
-
-# os.environ['OPENAI_API_KEY'] = "Your OpenAI API Key"
-
-import os
-import time 
-import openai
-from openai import OpenAI
-from langchain_core.output_parsers import StrOutputParser
-from langgraph.prebuilt import create_react_agent
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.tools import Tool
-from pydantic import BaseModel, Field
-
-from .config import Config
-from .document import DocumentProcessor
-from .vectorstore import VectorStore
 
 class GradeDocuments(BaseModel):
     """Binary score for relevance check on retrieved documents."""
@@ -67,6 +45,7 @@ class GradeAnswer(BaseModel):
         le=1  
     )
 
+
 class GradeHallucinations(BaseModel):
     """Binary score for hallucination present in generation answer."""
 
@@ -74,18 +53,12 @@ class GradeHallucinations(BaseModel):
         description="Answer is grounded in the facts, 'yes' or 'no'"
     )
 
-class PDFQuestionAnsweringAgent:
+class PDFQuestionAnsweringChains:
 
     def __init__(self):
-        self.project_dir = os.path.dirname(os.path.abspath(__file__))
-
-        self.pdf_root_path = os.path.join(self.project_dir,"uploaded_pdf")
-        if not os.path.exists(self.pdf_root_path):
-            os.makedirs(self.pdf_root_path)
-        
         self.doc_parser = DocumentProcessor()
         self.vectorstore = VectorStore()
-        self.llm = ChatOpenAI(model=Config.LLM_MODEL)
+        self.llm = ChatOpenAI(model=Config.LLM_MODEL,temperature=0)
         self.init_filter_doc_chain()
         self.init_answer_grade_chain()
         self.init_contextualize_chain()
@@ -95,8 +68,7 @@ class PDFQuestionAnsweringAgent:
     def init_rag_llm_chain(self):
         system_rag_msg = """You are an intelligent assistant. 
                             Use the provided context to answer the question. 
-                            Provide the answer in a complete sentence.
-                            Ensure the answer is concise, relevant, and accurate."""
+                            answer should be relevant, and accurate"""
         self.rag_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system",system_rag_msg),
@@ -194,14 +166,13 @@ class PDFQuestionAnsweringAgent:
 
 
 class State(TypedDict):
-    # Sequence[BaseMessage]
     questions: Annotated[list[AnyMessage], add_messages]
     docs: Annotated[list[AnyMessage], add_messages]
     filtered_docs: Annotated[list[AnyMessage], add_messages]
     generation: Annotated[list[AnyMessage], add_messages]
     chat_history: list[str]
 
-class ChatBotModelGraph(PDFQuestionAnsweringAgent):
+class AgentGraph(PDFQuestionAnsweringChains):
     def __init__(self):
         super().__init__()
         self.workflow = StateGraph(State)
@@ -210,34 +181,34 @@ class ChatBotModelGraph(PDFQuestionAnsweringAgent):
         self.build_graph()
 
     def contextualize_question(self,state):
-        print("---Contextualize Question---")
+        logger.info("---Contextualize Question---")
         query = state["questions"][-1].content  # Using questions instead of messages
-        print("----c_query---:",query)
+        logger.info("----C_QUERY---:",query)
         chat_history = state["chat_history"]
         response = self.contextualize_q_chain.invoke({"chat_history": chat_history, "question": query})
         state["questions"] = [AIMessage(content=response)]
         return state
 
     def document_retriever(self, state):
-        print("---Docs Retriever---")
+        logger.info("---Docs Retriever---")
         
         query = state["questions"][-1].content  # Using questions instead of messages
         docs = self.data_retriever_tool(query)
-        state["docs"] = docs  # Store retrieved documents in `docs`
+        state["docs"] = [AIMessage(content=docs)]  # Store retrieved documents in `docs`
         
         return state
 
     def filter_documents(self, state):
-        print("---FILTER DOCUMENTS---")
+        logger.info("---FILTER DOCUMENTS---")
         
         query = state["questions"][-1].content
-        docs = state["docs"]
+        docs = state["docs"][-1].content
         filtered_docs = []
         
         for doc in docs:
             res = self.filter_document_chain.invoke({"document": doc, "question": query})
             score = res.binary_score
-            print("########## score:", score)
+            logger.info("########## score:", score)
             if score == "yes":
                 filtered_docs.append(doc)
         
@@ -245,7 +216,7 @@ class ChatBotModelGraph(PDFQuestionAnsweringAgent):
         return state
 
     def filter_condition_node(self, state):
-        print("---FILTER CONDITION NODE---")
+        logger.info("---FILTER CONDITION NODE---")
         
         if state["filtered_docs"]:
             self.filter_loop_count = 0
@@ -260,27 +231,28 @@ class ChatBotModelGraph(PDFQuestionAnsweringAgent):
             return "transform_query"
 
     def transform_query(self, state):
-        print("---TRANSFORM QUERY---")
+        logger.info("---TRANSFORM QUERY---")
         
         question = state["questions"][-1].content
         new_question = self.rewrite_question_chain.invoke({"question": question})
-        print("------NEW QUERY:", new_question)
+        
+        logger.info("------NEW QUERY:", new_question)
         
         state["questions"].append(AIMessage(content=new_question))  # Add transformed query to questions
         return state
 
     def rag_generation(self, state):
-        print("---RAG GENERATION---")
+        logger.info("---RAG GENERATION---")
         question = state["questions"][0].content
         docs = "\n".join(state["filtered_docs"][-1].content)
         generation = self.rag_chain.invoke({"context": docs, "question": question})
-        print("########", generation)
         
+        logger.info("------Generation-----",generation)
         state["generation"] = [AIMessage(content=generation)]  # Store generated response
         return state
 
     def hallucination_grader(self, state):
-        print("---HALLUCINATION GRADER---")
+        logger.info("---HALLUCINATION GRADER---")
         
         docs = "\n".join(state["filtered_docs"][-1].content)
         generation = state["generation"][-1].content
@@ -304,7 +276,6 @@ class ChatBotModelGraph(PDFQuestionAnsweringAgent):
         self.workflow.add_node("filter_documents", self.filter_documents)
         self.workflow.add_node("transform_query", self.transform_query)
         self.workflow.add_node("rag_generation", self.rag_generation)
-        # self.workflow.add_node("hallucination_grader", self.hallucination_grader)
         
         self.workflow.add_edge(START, "contextualize_question")
         self.workflow.add_edge("contextualize_question","document_retriever")
@@ -315,6 +286,7 @@ class ChatBotModelGraph(PDFQuestionAnsweringAgent):
         
         self.app = self.workflow.compile()
 
+'''
 class MongoDBHandler:
     def __init__(self, uri="mongodb://localhost:27017", db_name="pdf_chatbot"):
         self.client = MongoClient(uri)
@@ -339,8 +311,8 @@ class MongoDBHandler:
 
 class ManageHistory:
     def __init__(self):
-        self.MAX_CHAT_HISTORY_LENGTH = 4
-        self.thresh = 2
+        self.MAX_CHAT_HISTORY_LENGTH = 10
+        self.thresh = 5
         openai_model,temperature = 'gpt-4o-mini', 0
         self.llm = ChatOpenAI(model=openai_model, temperature=temperature)
         
@@ -360,3 +332,4 @@ class ManageHistory:
             chat_history_summary = self.summarize_chat_history(chat_history[:self.thresh])
             chat_history = [f"Chat Summary: {chat_history_summary}"] + chat_history[self.thresh:]
         return chat_history
+'''

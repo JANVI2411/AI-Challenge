@@ -31,13 +31,12 @@ class VectorStore:
             documents=docs,   
             ids=doc_ids    
         )
+        print("\nCreated collection: ",self.coll_name)
 
     def retrieve_docs(self,query):
-        self.coll_name = "pdf_data_1e663c93-5ecc-410e-a663-7b026d189869"
-        print("Retrieving docs...")
-        # if self.coll_name:
+        # self.coll_name = "pdf_data_1e663c93-5ecc-410e-a663-7b026d189869"
+        print("Retrieving docs from ",self.coll_name)
         self.content_collection = self.chroma_client.get_or_create_collection(name=self.coll_name, embedding_function=self.embedding_function)
         results = self.content_collection.query(query_texts=query, n_results=self.top_k, include=['documents']) 
         return results["documents"][0]
-        # return []
        
