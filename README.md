@@ -2,6 +2,10 @@
 
 This project allows users to upload the PDF and the questions via a Streamlit frontend. The LangGraph and LangChain backend processes the uploaded PDF, creates a vector store using ChromaDB, and saves the document. Users can ask questions related to the PDF, and the app provides accurate answers using Retrieval-Augmented Generation (RAG) pipeline.
 
+I have implemented,
+1) query transformation, document filtering, and answer relevancy checks to enhance the accuracy of responses.
+2) the agent using LangGraph to create the graph flow, ensure accurate decision-making, and streamline the workflow.
+
 ## Features
 
 - **PDF Upload**: Upload the PDF file and questions through the frontend (Streamlit).
@@ -48,4 +52,5 @@ This will launch the Streamlit UI where you can upload PDFs and ask questions.
 
 ## Future Enhancements
 - Advanced search: Improve the vector search with better ranking algorithms.
+- Query Batching and Parallelism to reduce answer retrieval time.
 
